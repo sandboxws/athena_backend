@@ -116,6 +116,8 @@ module Graph
       # end
 
       def sidekiq_workers_with_stats(**args)
+        queries_count = ::Mongodb::Log.where('sidekiq_worker_id is not null').count
+        total_duration = ::Mongodb::Log.where('sidekiq_worker_id is not null').sum('duration').round(2)
         sidekiq_workers = Queries::SidekiqWorkers.query do |q|
           q.workers = args.dig(:workers)
           q.queues = args.dig(:queues)
@@ -124,6 +126,8 @@ module Graph
           q.mode = args.dig(:mode)
         end
         OpenStruct.new({
+          queries_count: queries_count,
+          total_duration: total_duration,
           workers: sidekiq_workers.workers_list,
           queues: sidekiq_workers.queues_list,
           workers_stats: sidekiq_workers.workers_stats,
