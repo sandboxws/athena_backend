@@ -5,9 +5,9 @@ module Graph
       class Stacktrace < Types::BaseObject
         description 'MongoDB Query Stacktrace'
 
-        field :id, ID, null: false, description: 'Log primary key'
+        field :id, ID, null: false, description: 'Stacktrace primary key'
         field :stacktrace, String, null: false, description: 'A minified version of a stacktrace'
-        field :stacktrace_excerpt, String, null: false, description: 'A minified version of a stacktrace'
+        field :stacktrace_excerpt, String, null: true, description: 'A minified version of a stacktrace'
         field :logs, Graph::Connections::Mongodb::Logs, null: true, description: 'Associated MongoDB Logs'
         field :logs_count, Integer, null: true, description: 'Total count of logs originating from this stacktrace'
         field :min_duration, Float, null: true, description: 'Min duration for a query originating from this stacktrace'

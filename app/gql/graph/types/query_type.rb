@@ -32,6 +32,19 @@ module Graph
         argument :id, Integer, required: true
       end
 
+      field :sidekiq_workers_with_stats, Graph::Types::SidekiqWorkersWithStats, null: false do
+        argument :limit, Integer, default_value: 25, required: false
+        argument :page, Integer, default_value: 1, required: false
+        argument :workers, [String], default_value: nil, required: false
+        argument :queues, [String], default_value: nil, required: false
+        argument :mode, String, required: false, default_value: 'latest'
+      end
+
+      field :sidekiq_worker, Graph::Types::SidekiqWorker, null: false do
+        argument :id, Integer, required: true
+        argument :logs_page, Integer, required: false, default_value: 1
+      end
+
       field :mongodb_controllers, Graph::Connections::Mongodb::Controllers, null: false do
         argument :limit, Integer, default_value: 25, required: false
         argument :page, Integer, required: false, default_value: 1
@@ -67,15 +80,15 @@ module Graph
         end.mode_query
       end
 
-      def mongodb_stacktraces(**args)
-        relation = ::Mongodb::Stacktrace
+      # def mongodb_stacktraces(**args)
+      #   relation = ::Mongodb::Stacktrace
 
-        selections = args[:ast_node].selections
-        selections_names = selections.map {|s| s.name}
-        relation = relation.joins(:logs).includes(:logs).group('logs.collection') if selections_names.include?('logs')
-        relation = relation.order('stacktraces.created_at desc').limit(args.dig(:limit))
-        relation
-      end
+      #   selections = args[:ast_node].selections
+      #   selections_names = selections.map {|s| s.name}
+      #   relation = relation.joins(:logs).includes(:logs).group('logs.collection') if selections_names.include?('logs')
+      #   relation = relation.order('stacktraces.created_at desc').limit(args.dig(:limit))
+      #   relation
+      # end
 
       def mongodb_controllers(**args)
         Queries::Controllers.query do |q|
@@ -88,10 +101,35 @@ module Graph
 
       def mongodb_stacktraces(**args)
         Queries::Stacktraces.query do |q|
-          q.names = args.dig(:names)
+          q.page = args.dig(:page)
           q.limit = args.dig(:limit)
           q.mode = :aggregate
         end.mode_query
+      end
+
+      # def sidekiq_workers(**args)
+      #   Queries::SidekiqWorkers.query do |q|
+      #     q.page = args.dig(:page)
+      #     q.limit = args.dig(:limit)
+      #     q.mode = :aggregate
+      #   end.mode_query
+      # end
+
+      def sidekiq_workers_with_stats(**args)
+        sidekiq_workers = Queries::SidekiqWorkers.query do |q|
+          q.workers = args.dig(:workers)
+          q.queues = args.dig(:queues)
+          q.limit = args.dig(:limit)
+          q.page = args.dig(:page)
+          q.mode = args.dig(:mode)
+        end
+        OpenStruct.new({
+          workers: sidekiq_workers.workers_list,
+          queues: sidekiq_workers.queues_list,
+          workers_stats: sidekiq_workers.workers_stats,
+          queues_stats: sidekiq_workers.queues_stats,
+          sidekiq_workers: sidekiq_workers.mode_query
+        })
       end
 
       def mongodb_explains(**args)
@@ -157,6 +195,55 @@ module Graph
         })
       end
 
+      def sidekiq_worker(**args)
+        sidekiq_worker = ::SidekiqWorker.find(args.dig(:id))
+        logs = sidekiq_worker.logs.page(args.dig(:logs_page)).per(10)
+        logs_count = sidekiq_worker.logs.count
+
+        logs_stats = sidekiq_worker
+          .logs
+          .select('sidekiq_worker_id, round(sum(logs.duration), 5) as total_duration, round(min(logs.duration), 5) as min_duration, round(max(logs.duration), 5) as max_duration, round(avg(logs.duration), 5) as avg_duration')
+          .group('sidekiq_worker_id').first
+
+        stats = sidekiq_worker
+          .logs
+          .select('collection, operation, count(*) logs_count')
+          .order('count(logs.id) desc')
+          .group('collection, operation')
+
+        ops_stats = stats.inject(Hash.new(0)) do |h, l|
+          h[l.operation] += l.logs_count; h
+        end.map {|name, value| OpenStruct.new({
+          name: name,
+          value: value
+        })}
+
+        stats = stats.group_by do |l|
+          l.collection
+        end.map {|name, stats| OpenStruct.new({
+          name: name,
+          stats: stats.map {|stat| OpenStruct.new({name: stat.operation, value: stat.logs_count})}
+        })}
+        OpenStruct.new({
+          id: sidekiq_worker.id,
+          worker: sidekiq_worker.worker,
+          queue: sidekiq_worker.queue,
+          jid: sidekiq_worker.jid,
+          params: sidekiq_worker.params,
+          params_excerpt: sidekiq_worker.params_excerpt,
+          logs_count: logs_count,
+          total_duration: logs_stats.total_duration,
+          ops_stats: ops_stats,
+          collections_stats: stats,
+          min_duration: logs_stats.min_duration,
+          max_duration: logs_stats.max_duration,
+          avg_duration: logs_stats.avg_duration,
+          logs: logs,
+          created_at: sidekiq_worker.created_at,
+          updated_at: sidekiq_worker.updated_at,
+        })
+      end
+
       def mongodb_controller(**args)
         controller = ::Mongodb::Controller.find(args.dig(:id))
         logs = controller.logs.page(args.dig(:logs_page)).per(10)
@@ -188,7 +275,7 @@ module Graph
           params: controller.params,
           logs_count: logs_count,
           session_id: controller.session_id,
-          total_duration: total_duration,
+          total_duration: total_duration.round(5),
           ops_stats: ops_stats,
           collections_stats: stats,
           collscans: collscans,
