@@ -8,6 +8,7 @@ module Graph
         argument :page, Integer, required: false, default_value: 1
         argument :collections, [String], required: false, default_value: nil
         argument :operations, [String], required: false, default_value: nil
+        argument :source_names, [String], default_value: nil, required: false
         argument :mode, String, required: false, default_value: 'latest'
       end
 
@@ -16,6 +17,7 @@ module Graph
         argument :page, Integer, default_value: 1, required: false
         argument :collections, [String], default_value: nil, required: false
         argument :operations, [String], default_value: nil, required: false
+        argument :source_names, [String], default_value: nil, required: false
         argument :mode, String, required: false, default_value: 'latest'
       end
 
@@ -74,6 +76,7 @@ module Graph
         Queries::Logs.query do |q|
           q.collections = args.dig(:collections)
           q.operations = args.dig(:operations)
+          q.sourceNames = args.dig(:sourceNames)
           q.limit = args.dig(:limit)
           q.page = args.dig(:page)
           q.mode = args.dig(:mode)
@@ -145,6 +148,7 @@ module Graph
         logs = Queries::Logs.query do |q|
           q.collections = args.dig(:collections)
           q.operations = args.dig(:operations)
+          q.source_names = args.dig(:source_names)
           q.limit = args.dig(:limit)
           q.page = args.dig(:page)
           q.mode = :latest
@@ -152,6 +156,7 @@ module Graph
         OpenStruct.new({
           collections: logs.collections_list,
           operations: logs.operations_list,
+          source_names: logs.source_names_list,
           collections_stats: logs.collections_stats,
           operations_stats: logs.operations_stats,
           logs: logs.mode_query
@@ -270,13 +275,14 @@ module Graph
           stats: stats.map {|stat| OpenStruct.new({name: stat.operation, value: stat.logs_count})}
         })}
         collscans = controller.explains.where('collscan = 1').count
-        total_duration = logs.sum(:duration)
+        total_duration = controller.logs.sum(:duration)
         OpenStruct.new({
           id: controller.id,
           name: controller.name,
           action: controller.action,
           path: controller.path,
           params: controller.params,
+          params_excerpt: controller.params_excerpt,
           logs_count: logs_count,
           session_id: controller.session_id,
           total_duration: total_duration.round(5),

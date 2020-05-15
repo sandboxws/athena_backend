@@ -3,6 +3,7 @@ module Queries
     attr_accessor :relation,
       :collections,
       :operations,
+      :source_names,
       :duration,
       :page,
       :limit,
@@ -28,6 +29,7 @@ module Queries
       init_query
         .collections_relation
         .operations_relation
+        .source_names_relation
         .relation
         # .mode_relation
     end
@@ -39,6 +41,11 @@ module Queries
 
     def operations_relation
       @relation = @relation.where('operation in (?)', operations) if operations.present?
+      self
+    end
+
+    def source_names_relation
+      @relation = @relation.where('source_name in (?)', source_names) if source_names.present?
       self
     end
 
@@ -81,6 +88,10 @@ module Queries
 
     def operations_list
       @relation.distinct('operation').pluck(:operation)
+    end
+
+    def source_names_list
+      @relation.distinct('source_name').pluck(:source_name)
     end
 
     def query

@@ -10,6 +10,7 @@ module Graph
         field :action, String, null: false, description: 'Rails controller action'
         field :path, String, null: false, description: 'Rails controller path'
         field :params, String, null: false, description: 'HTTP request params'
+        field :params_excerpt, String, null: false, description: 'Mini version of the HTTP request params'
         field :session_id, String, null: false, description: 'A unique id identifying a session during which queries are logged.'
         field :ops_stats, [Stat], null: false, description: 'Controller stats'
         field :collections_stats, [CollectionStats], null: false, description: 'Controller stats'

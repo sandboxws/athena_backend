@@ -2,6 +2,10 @@ class Mongodb::Controller < ActiveRecord::Base
   has_many :logs
   has_many :explains
 
+  def params_excerpt
+    params.truncate(190)
+  end
+
   def total_duration
     logs.sum(:duration).round(3)
   end
