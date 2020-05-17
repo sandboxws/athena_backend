@@ -15,7 +15,7 @@ module Queries
     end
 
     def init_query
-      @relation = ::Mongodb::Stacktrace
+      @relation = ::Mongodb::Stacktrace.where('stacktrace <> "[]"')
       self
     end
 
