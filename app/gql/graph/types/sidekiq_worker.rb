@@ -10,7 +10,6 @@ module Graph
       field :jid, String, null: false, description: 'Sidekiq worker jid'
       field :params, String, null: false, description: 'Sidekiq worker params'
       field :params_excerpt, String, null: false, description: 'Sidekiq worker params'
-      field :logs, Graph::Connections::Mongodb::Logs, null: false, description: 'Associated MongoDB Logs'
       field :logs_count, Integer, null: false, description: 'Total count of logs originating from this sidekiq worker'
       field :total_duration, Float, null: false, description: 'Total duration for a queries originating from this sidekiq worker'
       field :ops_stats, [Stat], null: false, description: 'Operations stats'

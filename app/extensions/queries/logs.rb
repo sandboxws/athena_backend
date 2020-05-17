@@ -1,6 +1,9 @@
 module Queries
   class Logs
     attr_accessor :relation,
+      :controller_id,
+      :stacktrace_id,
+      :sidekiq_worker_id,
       :collections,
       :operations,
       :source_names,
@@ -27,11 +30,29 @@ module Queries
 
     def build_query
       init_query
+        .controller_id_relation
+        .stacktrace_id_relation
+        .sidekiq_worker_id_relation
         .collections_relation
         .operations_relation
         .source_names_relation
         .relation
         # .mode_relation
+    end
+
+    def controller_id_relation
+      @relation = @relation.where('controller_id = ?', controller_id) if controller_id.present?
+      self
+    end
+
+    def stacktrace_id_relation
+      @relation = @relation.where('stacktrace_id = ?', stacktrace_id) if stacktrace_id.present?
+      self
+    end
+
+    def sidekiq_worker_id_relation
+      @relation = @relation.where('sidekiq_worker_id = ?', sidekiq_worker_id) if sidekiq_worker_id.present?
+      self
     end
 
     def collections_relation

@@ -4,6 +4,8 @@ module Graph
       field :dashboard, Graph::Types::Mongodb::Dashboard, null: false
 
       field :mongodb_logs, Graph::Connections::Mongodb::Logs, null: false do
+        argument :controller_id, Integer, required: false
+        argument :stacktrace_id, Integer, required: false
         argument :limit, Integer, required: false, default_value: 25
         argument :page, Integer, required: false, default_value: 1
         argument :collections, [String], required: false, default_value: nil
@@ -13,6 +15,9 @@ module Graph
       end
 
       field :logs_with_stats, Graph::Types::Mongodb::LogsWithStats, null: false do
+        argument :controller_id, Integer, required: false
+        argument :stacktrace_id, Integer, required: false
+        argument :sidekiq_worker_id, Integer, required: false
         argument :limit, Integer, default_value: 25, required: false
         argument :page, Integer, default_value: 1, required: false
         argument :collections, [String], default_value: nil, required: false
@@ -32,6 +37,7 @@ module Graph
 
       field :mongodb_stacktrace, Graph::Types::Mongodb::Stacktrace, null: false do
         argument :id, Integer, required: true
+        argument :logs_page, Integer, required: false, default_value: 1
       end
 
       field :sidekiq_workers_with_stats, Graph::Types::SidekiqWorkersWithStats, null: false do
@@ -44,7 +50,6 @@ module Graph
 
       field :sidekiq_worker, Graph::Types::SidekiqWorker, null: false do
         argument :id, Integer, required: true
-        argument :logs_page, Integer, required: false, default_value: 1
       end
 
       field :mongodb_controllers, Graph::Connections::Mongodb::Controllers, null: false do
@@ -74,24 +79,16 @@ module Graph
 
       def mongodb_logs(**args)
         Queries::Logs.query do |q|
+          q.controller_id = args.dig(:controller_id)
+          q.stacktrace_id = args.dig(:stacktrace_id)
           q.collections = args.dig(:collections)
           q.operations = args.dig(:operations)
-          q.sourceNames = args.dig(:sourceNames)
+          q.source_names = args.dig(:source_names)
           q.limit = args.dig(:limit)
           q.page = args.dig(:page)
-          q.mode = args.dig(:mode)
+          q.mode = :latest
         end.mode_query
       end
-
-      # def mongodb_stacktraces(**args)
-      #   relation = ::Mongodb::Stacktrace
-
-      #   selections = args[:ast_node].selections
-      #   selections_names = selections.map {|s| s.name}
-      #   relation = relation.joins(:logs).includes(:logs).group('logs.collection') if selections_names.include?('logs')
-      #   relation = relation.order('stacktraces.created_at desc').limit(args.dig(:limit))
-      #   relation
-      # end
 
       def mongodb_controllers(**args)
         Queries::Controllers.query do |q|
@@ -109,14 +106,6 @@ module Graph
           q.mode = :aggregate
         end.mode_query
       end
-
-      # def sidekiq_workers(**args)
-      #   Queries::SidekiqWorkers.query do |q|
-      #     q.page = args.dig(:page)
-      #     q.limit = args.dig(:limit)
-      #     q.mode = :aggregate
-      #   end.mode_query
-      # end
 
       def sidekiq_workers_with_stats(**args)
         queries_count = ::Mongodb::Log.where('sidekiq_worker_id is not null').count
@@ -145,7 +134,11 @@ module Graph
       end
 
       def logs_with_stats(**args)
+        total_duration = ::Mongodb::Log.sum(:duration).round(5)
         logs = Queries::Logs.query do |q|
+          q.controller_id = args.dig(:controller_id)
+          q.stacktrace_id = args.dig(:stacktrace_id)
+          q.sidekiq_worker_id = args.dig(:sidekiq_worker_id)
           q.collections = args.dig(:collections)
           q.operations = args.dig(:operations)
           q.source_names = args.dig(:source_names)
@@ -154,6 +147,7 @@ module Graph
           q.mode = :latest
         end
         OpenStruct.new({
+          total_duration: total_duration,
           collections: logs.collections_list,
           operations: logs.operations_list,
           source_names: logs.source_names_list,
@@ -186,9 +180,13 @@ module Graph
         stacktrace = ::Mongodb::Stacktrace.find(args.dig(:id))
         logs = stacktrace.logs.page(args.dig(:logs_page)).per(10)
         logs_count = stacktrace.logs.count
+        sources_stats = stacktrace.logs
+          .select('source_name, count(*) as queries')
+          .group('source_name')
+          .to_a.map {|r| OpenStruct.new(name: r[:source_name], value: r[:queries])}
         stats = stacktrace
           .logs
-          .select('stacktrace_id, min(logs.duration) as min_duration, max(logs.duration) as max_duration, avg(logs.duration) as avg_duration')
+          .select('stacktrace_id, round(min(logs.duration), 5) as min_duration, round(max(logs.duration), 2) as max_duration, round(avg(logs.duration), 5) as avg_duration')
           .group('stacktrace_id').first
         OpenStruct.new({
           id: stacktrace.id,
@@ -198,6 +196,7 @@ module Graph
           min_duration: stats.min_duration,
           max_duration: stats.max_duration,
           avg_duration: stats.avg_duration,
+          sources_stats: sources_stats,
           logs: logs,
           created_at: stacktrace.created_at,
           updated_at: stacktrace.updated_at,
@@ -255,7 +254,7 @@ module Graph
 
       def mongodb_controller(**args)
         controller = ::Mongodb::Controller.find(args.dig(:id))
-        logs = controller.logs.page(args.dig(:logs_page)).per(10)
+        logs = controller.logs.page(args.dig(:logs_page)).per(2)
         logs_count = controller.logs.count
         stats = controller
           .logs
