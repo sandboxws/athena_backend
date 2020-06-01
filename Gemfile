@@ -46,7 +46,6 @@ gem 'tzinfo-data', platforms: [:mingw, :mswin, :x64_mingw, :jruby]
 # GraphQL
 gem 'graphql', '~> 1.10', '>= 1.10.5'
 gem 'graphql-client', '~> 0.16.0'
-gem 'graphql-errors', '~> 0.4.0'
 gem 'graphql-batch'
 
 # Graphiql
