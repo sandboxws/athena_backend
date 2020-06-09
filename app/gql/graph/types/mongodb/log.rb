@@ -8,7 +8,7 @@ module Graph
         field :collection, String, null: false, description: 'Collection name'
         field :source_name, String, null: false, description: 'Query originating source'
         field :operation, String, null: false, description: 'The operation performed'
-        field :app_name, String, null: false, description: 'The originating app'
+        field :app_name, String, null: true, description: 'The originating app'
         field :source_name, String, null: false, description: 'Source of the query (ex: console, sidekiq, server, …)'
         field :collscan, Boolean, null: true, description: 'A COLLSCAN flag'
         field :command, String, null: false, description: 'The command performed'
