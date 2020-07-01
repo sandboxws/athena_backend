@@ -90,6 +90,30 @@ module Graph
         argument :id, Integer, required: true
       end
 
+      field :pg_seq_scans, Graph::Connections::Postgresql::SeqScans, null: false do
+        argument :limit, Integer, default_value: 25, required: false
+        argument :page, Integer, required: false, default_value: 1
+      end
+
+      field :pg_dml_stats, Graph::Connections::Postgresql::DmlStats, null: false do
+        argument :limit, Integer, default_value: 25, required: false
+        argument :page, Integer, required: false, default_value: 1
+      end
+
+      def pg_seq_scans(**args)
+        ::Postgresql::SeqScan
+          .page(args.dig(:page))
+          .limit(args.dig(:limit))
+          .order('seq_scan DESC')
+      end
+
+      def pg_dml_stats(**args)
+        ::Postgresql::DmlStat
+          .page(args.dig(:page))
+          .limit(args.dig(:limit))
+          .order('total_inserts DESC')
+      end
+
       def dashboard
         ::DashboardService.stats
       end
