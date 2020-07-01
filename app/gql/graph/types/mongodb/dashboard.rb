@@ -11,7 +11,7 @@ module Graph
           argument :limit, Integer, default_value: 10, required: false
         end
 
-        field :mongodb_latest_controllers, [Graph::Types::Mongodb::Controller], null: true do
+        field :mongodb_latest_controllers, [Graph::Types::Controller], null: true do
           argument :limit, Integer, default_value: 10, required: false
         end
 
@@ -26,7 +26,7 @@ module Graph
         end
 
         def mongodb_latest_controllers(**args)
-          ::Mongodb::Controller
+          ::Controller
             .joins(:logs)
             .select('controllers.id, controllers.name, controllers.action, controllers.path, controllers.created_at, count(logs.id) as logs_count')
             .group('controllers.id, controllers.name, controllers.action, controllers.path, controllers.created_at')
