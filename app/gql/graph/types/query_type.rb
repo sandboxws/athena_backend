@@ -30,12 +30,12 @@ module Graph
         argument :id, Integer, required: true
       end
 
-      field :mongodb_stacktraces, Graph::Connections::Mongodb::Stacktraces, null: false do
+      field :stacktraces, Graph::Connections::Stacktraces, null: false do
         argument :limit, Integer, default_value: 25, required: false
         argument :page, Integer, required: false, default_value: 1
       end
 
-      field :mongodb_stacktrace, Graph::Types::Mongodb::Stacktrace, null: false do
+      field :mongodb_stacktrace, Graph::Types::Stacktrace, null: false do
         argument :id, Integer, required: true
         argument :logs_page, Integer, required: false, default_value: 1
       end
@@ -52,16 +52,17 @@ module Graph
         argument :id, Integer, required: true
       end
 
-      field :mongodb_controllers, Graph::Connections::Mongodb::Controllers, null: false do
+      field :controllers, Graph::Connections::AwesomeControllers, null: false do
         argument :limit, Integer, default_value: 25, required: false
         argument :page, Integer, required: false, default_value: 1
         argument :names, [String], default_value: nil, required: false
-        argument :mode, String, required: false, default_value: 'aggregate'
+        argument :mode, String, required: false, default_value: 'latest'
       end
 
-      field :mongodb_controller, Graph::Types::Mongodb::Controller, null: false do
+      field :controller, Graph::Types::AwesomeController, null: false do
         argument :id, Integer, required: true
         argument :logs_page, Integer, required: false, default_value: 1
+        argument :sql_queries_page, Integer, required: false, default_value: 1
       end
 
       field :mongodb_explains, [Graph::Types::Mongodb::Explain], null: false, extras: [:ast_node] do
@@ -71,6 +72,46 @@ module Graph
       field :global_stats, Graph::Types::Mongodb::GlobalStats, null: false do
         argument :collections, [String], default_value: nil, required: false
         argument :operations, [String], default_value: nil, required: false
+      end
+
+      field :sql_queries_with_stats, Graph::Types::SqlQueriesWithStats, null: false do
+        argument :controller_id, Integer, required: false
+        argument :stacktrace_id, Integer, required: false
+        argument :sidekiq_worker_id, Integer, required: false
+        argument :limit, Integer, default_value: 25, required: false
+        argument :page, Integer, default_value: 1, required: false
+        argument :tables, [String], default_value: nil, required: false
+        argument :operations, [String], default_value: nil, required: false
+        argument :source_names, [String], default_value: nil, required: false
+        argument :mode, String, required: false, default_value: 'latest'
+      end
+
+      field :sql_query, Graph::Types::SqlQuery, null: false do
+        argument :id, Integer, required: true
+      end
+
+      field :pg_seq_scans, Graph::Connections::Postgresql::SeqScans, null: false do
+        argument :limit, Integer, default_value: 25, required: false
+        argument :page, Integer, required: false, default_value: 1
+      end
+
+      field :pg_dml_stats, Graph::Connections::Postgresql::DmlStats, null: false do
+        argument :limit, Integer, default_value: 25, required: false
+        argument :page, Integer, required: false, default_value: 1
+      end
+
+      def pg_seq_scans(**args)
+        ::Postgresql::SeqScan
+          .page(args.dig(:page))
+          .limit(args.dig(:limit))
+          .order('seq_scan DESC')
+      end
+
+      def pg_dml_stats(**args)
+        ::Postgresql::DmlStat
+          .page(args.dig(:page))
+          .limit(args.dig(:limit))
+          .order('total_inserts DESC')
       end
 
       def dashboard
@@ -90,7 +131,7 @@ module Graph
         end.mode_query
       end
 
-      def mongodb_controllers(**args)
+      def controllers(**args)
         Queries::Controllers.query do |q|
           q.names = args.dig(:names)
           q.limit = args.dig(:limit)
@@ -99,7 +140,7 @@ module Graph
         end.mode_query
       end
 
-      def mongodb_stacktraces(**args)
+      def stacktraces(**args)
         Queries::Stacktraces.query do |q|
           q.page = args.dig(:page)
           q.limit = args.dig(:limit)
@@ -177,7 +218,7 @@ module Graph
       end
 
       def mongodb_stacktrace(**args)
-        stacktrace = ::Mongodb::Stacktrace.find(args.dig(:id))
+        stacktrace = ::Stacktrace.find(args.dig(:id))
         logs = stacktrace.logs.page(args.dig(:logs_page)).per(10)
         logs_count = stacktrace.logs.count
         sources_stats = stacktrace.logs
@@ -188,16 +229,35 @@ module Graph
           .logs
           .select('stacktrace_id, round(min(logs.duration), 5) as min_duration, round(max(logs.duration), 2) as max_duration, round(avg(logs.duration), 5) as avg_duration')
           .group('stacktrace_id').first
+
+        sql_queries = stacktrace.sql_queries.page(args.dig(:sql_queries_page)).per(10)
+        sql_queries_count = stacktrace.sql_queries.count
+        sql_queries_sources_stats = stacktrace.sql_queries
+          .select('source_name, count(*) as queries')
+          .group('source_name')
+          .to_a.map {|r| OpenStruct.new(name: r[:source_name], value: r[:queries])}
+          sql_queries_stats = stacktrace
+          .sql_queries
+          .select('stacktrace_id, round(min(sql_queries.duration), 5) as min_duration, round(max(sql_queries.duration), 2) as max_duration, round(avg(sql_queries.duration), 5) as avg_duration')
+          .group('stacktrace_id').first
+
         OpenStruct.new({
           id: stacktrace.id,
           stacktrace: stacktrace.stacktrace,
           stacktrace_excerpt: stacktrace.stacktrace_excerpt,
           logs_count: logs_count,
-          min_duration: stats.min_duration,
-          max_duration: stats.max_duration,
-          avg_duration: stats.avg_duration,
+          min_duration: stats&.min_duration,
+          max_duration: stats&.max_duration,
+          avg_duration: stats&.avg_duration,
           sources_stats: sources_stats,
           logs: logs,
+
+          sql_queries_count: sql_queries_count,
+          sql_queries_min_duration: sql_queries_stats&.min_duration,
+          sql_queries_max_duration: sql_queries_stats&.max_duration,
+          sql_queries_avg_duration: sql_queries_stats&.avg_duration,
+          sql_queries_sources_stats: sql_queries_sources_stats,
+          sql_queries: sql_queries,
           created_at: stacktrace.created_at,
           updated_at: stacktrace.updated_at,
         })
@@ -252,29 +312,60 @@ module Graph
         })
       end
 
-      def mongodb_controller(**args)
-        controller = ::Mongodb::Controller.find(args.dig(:id))
+      def controller(**args)
+        controller = ::AwesomeController.find(args.dig(:id))
+
         logs = controller.logs.page(args.dig(:logs_page)).per(2)
         logs_count = controller.logs.count
+
+        sql_queries = controller.sql_queries.page(args.dig(:sql_queries_page)).per(2)
+        sql_queries_count = controller.sql_queries.count
+
         stats = controller
           .logs
           .select('collection, operation, count(*) logs_count')
           .order('count(logs.id) desc')
           .group('collection, operation')
+
         ops_stats = stats.inject(Hash.new(0)) do |h, l|
           h[l.operation] += l.logs_count; h
         end.map {|name, value| OpenStruct.new({
           name: name,
           value: value
         })}
+
         stats = stats.group_by do |l|
           l.collection
         end.map {|name, stats| OpenStruct.new({
           name: name,
           stats: stats.map {|stat| OpenStruct.new({name: stat.operation, value: stat.logs_count})}
         })}
+
         collscans = controller.explains.where('collscan = 1').count
         total_duration = controller.logs.sum(:duration)
+
+        sql_stats = controller
+          .sql_queries
+          .select('table_name, schema_name, operation, count(*) sql_queries_count')
+          .order('count(sql_queries.id) desc')
+          .group('table_name, schema_name, operation')
+
+        sql_ops_stats = sql_stats.inject(Hash.new(0)) do |h, l|
+            h[l.operation] += l.sql_queries_count; h
+          end.map {|name, value| OpenStruct.new({
+            name: name,
+            value: value
+          })}
+
+        sql_stats = sql_stats.group_by do |l|
+            "#{l.schema_name}.#{l.table_name}"
+        end.map {|name, stats| OpenStruct.new({
+          name: name,
+          stats: stats.map {|stat| OpenStruct.new({name: stat.operation, value: stat.sql_queries_count})}
+        })}
+
+        sql_total_duration = controller.sql_queries.sum(:duration)
+
         OpenStruct.new({
           id: controller.id,
           name: controller.name,
@@ -283,15 +374,48 @@ module Graph
           params: controller.params,
           params_excerpt: controller.params_excerpt,
           logs_count: logs_count,
+          sql_queries_count: sql_queries_count,
           session_id: controller.session_id,
           total_duration: total_duration.round(5),
+          sql_total_duration: sql_total_duration.round(5),
           ops_stats: ops_stats,
           collections_stats: stats,
+          sql_ops_stats: sql_ops_stats,
+          tables_stats: sql_stats,
           collscans: collscans,
           logs: logs,
+          sql_queries: sql_queries,
           created_at: controller.created_at,
           updated_at: controller.updated_at,
         })
+      end
+
+      def sql_queries_with_stats(**args)
+        total_duration = ::SqlQuery.sum(:duration).round(5)
+        sql_queries = Queries::SqlQueries.query do |q|
+          q.controller_id = args.dig(:controller_id)
+          q.stacktrace_id = args.dig(:stacktrace_id)
+          q.sidekiq_worker_id = args.dig(:sidekiq_worker_id)
+          q.tables = args.dig(:tables)
+          q.operations = args.dig(:operations)
+          q.source_names = args.dig(:source_names)
+          q.limit = args.dig(:limit)
+          q.page = args.dig(:page)
+          q.mode = :latest
+        end
+        OpenStruct.new({
+          total_duration: total_duration,
+          tables: sql_queries.tables_list,
+          operations: sql_queries.operations_list,
+          source_names: sql_queries.source_names_list,
+          tables_stats: sql_queries.tables_stats,
+          operations_stats: sql_queries.operations_stats,
+          sql_queries: sql_queries.mode_query
+        })
+      end
+
+      def sql_query(**args)
+        ::SqlQuery.find(args.dig(:id))
       end
     end
   end

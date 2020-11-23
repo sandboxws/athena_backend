@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-Graph::Connections::Mongodb::Logs
 module Graph
   module Types
     module Mongodb

@@ -1,6 +1,6 @@
-class Mongodb::Controller < ActiveRecord::Base
-  has_many :logs
-  has_many :explains
+class Controller < ActiveRecord::Base
+  has_many :logs, class_name: 'Mongodb::Log'
+  has_many :explains, class_name: 'Mongodb::Explain'
 
   def params_excerpt
     params.truncate(190)
@@ -24,7 +24,7 @@ class Mongodb::Controller < ActiveRecord::Base
   end
 
   def self.historical_stats(controller_name, controller_action)
-    ::Mongodb::Controller
+    ::Controller
       .joins(:logs)
       .where('controllers.name = ? and controllers.action = ?', controller_name, controller_action)
       .select('controllers.id, controllers.name, controllers.action, count(logs.id) as logs_count, round(sum(logs.duration), 2) as total_duration')

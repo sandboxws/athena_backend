@@ -15,7 +15,7 @@ module Queries
     end
 
     def init_query
-      @relation = ::Mongodb::Controller
+      @relation = ::AwesomeController
       self
     end
 
@@ -68,6 +68,13 @@ module Queries
       aggregates_relation
         .relation
         .order('controllers.created_at desc')
+        .page(page)
+        .per(limit)
+    end
+
+    def latest_mode
+      @relation
+        .order('created_at desc')
         .page(page)
         .per(limit)
     end
